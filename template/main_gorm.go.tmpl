@@ -8,21 +8,18 @@ import (
 	"os/signal"
 	"syscall"
 
-    _ "github.com/jinzhu/gorm/dialects/mysql"
-    _ "github.com/jinzhu/gorm/dialects/sqlite"
-    _ "github.com/jinzhu/gorm/dialects/postgres"
-    _ "github.com/jinzhu/gorm/dialects/mssql"
+	"gorm.io/driver/mysql"
+	"gorm.io/gorm"
 
-	"github.com/gin-gonic/gin"
-	"github.com/jinzhu/gorm"
-	"github.com/swaggo/files"       // swagger embed files
-	"github.com/swaggo/gin-swagger" // gin-swagger middleware
 	"github.com/droundy/goopt"
+	"github.com/gin-gonic/gin"
+	swaggerFiles "github.com/swaggo/files"     // swagger embed files
+	ginSwagger "github.com/swaggo/gin-swagger" // gin-swagger middleware
 
-	"{{.module}}/{{.apiPackageName}}"
-    "{{.module}}/{{.daoPackageName}}"
-    _ "{{.module}}/docs"
-    "{{.module}}/{{.modelPackageName}}"
+	"example.com/rest/example/api"
+	"example.com/rest/example/dao"
+	_ "example.com/rest/example/docs"
+	"example.com/rest/example/model"
 )
 
 var (
@@ -94,12 +91,12 @@ func main() {
 `, BuildDate, BuildNumber, LatestCommit, RuntimeVer, BuiltOnOs)
 	goopt.Parse(nil)
 
-	db, err := gorm.Open("{{.sqlType}}", "{{.sqlConnStr}}")
+	dsn := "{{.sqlConnStr}}"
+	db, err := gorm.Open(mysql.Open(dsn), &gorm.Config{})
 	if err != nil {
 		log.Fatalf("Got error when connect database, the error is '%v'", err)
 	}
 
-	db.LogMode(true)
 	{{.daoPackageName}}.DB = db
 
     {{ $modelPackage := .modelPackageName }}

@@ -3,13 +3,12 @@ package {{.apiPackageName}}
 import (
 	"context"
 	"encoding/json"
-	"encoding/hex"
 	"fmt"
 	"io/ioutil"
 	"net/http"
 	"strconv"
-	"time"
 	"unsafe"
+
 	_ "github.com/satori/go.uuid"
 
 	"{{.daoFQPN}}"
@@ -36,10 +35,10 @@ type CrudAPI struct {
 
 // PagedResults results for pages GetAll results.
 type PagedResults struct {
-	Page         int64       {{ .Config.JSONTag "page" }}
-	PageSize     int64       {{ .Config.JSONTag "page_size" }}
-	Data         interface{} {{ .Config.JSONTag "data" }}
-    TotalRecords int         {{ .Config.JSONTag "total_records" }}
+	Page         int         `json:"page"`
+	PageSize     int         `json:"page_size"`
+	Data         interface{} `json:"data"`
+	TotalRecords int64       `json:"total_records"`
 }
 
 // HTTPError example
@@ -116,13 +115,13 @@ var ContextInitializer ContextInitializerFunc
 
 
 
-func readInt(r *http.Request, param string, v int64) (int64, error) {
+func readInt(r *http.Request, param string, v int) (int, error) {
 	p := r.FormValue(param)
 	if p == "" {
 		return v, nil
 	}
 
-	return strconv.ParseInt(p, 10, 64)
+	return strconv.Atoi(p)
 }
 
 func writeJSON(ctx context.Context, w http.ResponseWriter, v interface{}) {
@@ -271,7 +270,7 @@ func parseUUID(ps httprouter.Params, key string) (string, error) {
 
 func parseBytes(ps httprouter.Params, key string) (string, error) {
 	idStr := ps.ByName(key)
-	return hex.DecodeString(idStr)
+	return idStr, nil
 }
 
 
@@ -279,22 +278,22 @@ func parseBytes(ps httprouter.Params, key string) (string, error) {
 
 
 // GetDdl is a function to get table info for a table in the {{.DatabaseName}} database
-// @Summary Get table info for a table in the {{.DatabaseName}} database by argID
+// @Summary Get table info for a table in the {{.DatabaseName}} database by objectId
 // @Tags TableInfo
-// @ID argID
+// @ID objectId
 // @Description GetDdl is a function to get table info for a table in the {{.DatabaseName}} database
 // @Accept  json
 // @Produce  json
-// @Param  argID path int true "id"
+// @Param  objectId path int true "id"
 // @Success 200 {object} {{.apiPackageName}}.CrudAPI
 // @Failure 400 {object} {{.apiPackageName}}.HTTPError
 // @Failure 404 {object} {{.apiPackageName}}.HTTPError "ErrNotFound, db record for id not found - returns NotFound HTTP 404 not found error"
-// @Router /ddl/{argID} [get]
+// @Router /ddl/{objectId} [get]
 // http "{{$.serverScheme}}://{{$.serverHost}}{{if ne $.serverPort 80}}:{{$.serverPort}}{{end}}/ddl/xyz" X-Api-User:user123
 func GetDdl(w http.ResponseWriter, r *http.Request, ps httprouter.Params) {
 	ctx := initializeContext(r)
 
-	argID := ps.ByName("argID")
+	argID := ps.ByName("objectId")
 
 	if err := ValidateRequest(ctx, r, "ddl", {{.modelPackageName}}.FetchDDL); err != nil {
 		returnError(ctx, w, r, err)

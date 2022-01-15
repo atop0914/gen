@@ -1,10 +1,6 @@
 package {{.modelPackageName}}
 
 import (
-    "database/sql"
-    "time"
-
-    "github.com/satori/go.uuid"
     {{if .UseGuregu}} "github.com/guregu/null" {{end}}
 	"gorm.io/gorm"
 )
@@ -52,7 +48,7 @@ var {{.TableName}}TableInfo = &TableInfo {
 	Name: "{{.TableName}}",
 	Columns: []*ColumnInfo{
         {{range .TableInfo.CodeFields}}
-        &ColumnInfo{
+        {
         	Index: {{.ColumnMeta.Index}},
         	Name: "{{.ColumnMeta.Name}}",
         	Comment: `{{.ColumnMeta.Comment}}`,
