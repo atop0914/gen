@@ -11,28 +11,25 @@
 // @Failure 500 {object} {{.apiPackageName}}.HTTPError
 // @Router /{{.StructName | toLower}}{{range $field := .TableInfo.CodeFields}}{{ if $field.PrimaryKeyArgName}}/{ {{- $field.PrimaryKeyArgName -}} }{{end}}{{end}} [delete]
 // http DELETE "{{$.serverScheme}}://{{$.serverHost}}{{if ne $.serverPort 80}}:{{$.serverPort}}{{end}}/{{.StructName | toLower}}{{range $field := .TableInfo.CodeFields}}{{ if $field.PrimaryKeyArgName}}/{{ $field.FakeData }}{{end}}{{end}}" X-Api-User:user123
-func Delete{{.StructName}}(w http.ResponseWriter, r *http.Request, ps httprouter.Params) {
-	ctx := initializeContext(r)
+func Delete{{.StructName}}(c *gin.Context) {
+	var code int
 {{range $field := .TableInfo.CodeFields}}
 {{ if $field.PrimaryKeyArgName }}
-	{{$field.PrimaryKeyArgName}}, err := {{$field.PrimaryKeyFieldParser}}(ps, "{{$field.PrimaryKeyArgName}}")
+	{{$field.PrimaryKeyArgName}}, err := {{$field.PrimaryKeyFieldParser}}(c, "{{$field.PrimaryKeyArgName}}")
 	if err != nil {
-		returnError(ctx, w, r, err)
+		code = util.ErrParam
+		util.OutJsonErrMsg(c, code, err.Error())
 		return
 	}
 {{end}}{{end}}
 
-	if err := ValidateRequest(ctx, r, "{{.TableName}}", {{.modelPackageName}}.Delete); err != nil{
-		returnError(ctx, w, r, err)
+	_, err := {{.daoPackageName}}.Delete{{.StructName}}(c,{{range $field := .TableInfo.CodeFields}} {{ if $field.PrimaryKeyArgName }} {{$field.PrimaryKeyArgName}},{{end}}{{end -}})
+	if err != nil {
+		code = util.ErrMySQL
+		util.OutJsonErrMsg(c, code, err.Error())
 		return
 	}
 
-	rowsAffected, err := {{.daoPackageName}}.Delete{{.StructName}}(ctx,{{range $field := .TableInfo.CodeFields}} {{ if $field.PrimaryKeyArgName }} {{$field.PrimaryKeyArgName}},{{end}}{{end -}})
-	if err != nil {
-	    returnError(ctx, w, r, err)
-	    return
-	}
-
-	writeRowsAffected(w, rowsAffected )
+	util.OutJson(c, code, nil)
 }
 {{end}}

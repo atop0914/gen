@@ -11,39 +11,25 @@
 // @Failure 404 {object} {{.apiPackageName}}.HTTPError
 // @Router /{{.StructName | toLower}} [post]
 // echo '{{ToJSON .TableInfo.Instance 0}}' | http POST "{{$.serverScheme}}://{{$.serverHost}}{{if ne $.serverPort 80}}:{{$.serverPort}}{{end}}/{{.StructName | toLower}}" X-Api-User:user123
-func Add{{.StructName}}(w http.ResponseWriter, r *http.Request, ps httprouter.Params) {
-	ctx := initializeContext(r)
+func Add{{.StructName}}(c *gin.Context) {
+	var code int
+
 	{{.StructName | toLower}} := &{{.modelPackageName}}.{{.StructName}}{}
 
-	if err := readJSON(r, {{.StructName | toLower}}); err != nil {
-		returnError(ctx, w, r, {{.daoPackageName}}.ErrBadParams)
-		return
-	}
-
-
-   if err := {{.StructName | toLower}}.BeforeSave(dao.DB); err != nil {
-      returnError(ctx, w, r, {{.daoPackageName}}.ErrBadParams)
-   }
-
-   {{.StructName | toLower}}.Prepare()
-
-   if err := {{.StructName | toLower}}.Validate({{.modelPackageName}}.Create); err != nil {
-      returnError(ctx, w, r, {{.daoPackageName}}.ErrBadParams)
-      return
-   }
-
-	if err := ValidateRequest(ctx, r, "{{.TableName}}", {{.modelPackageName}}.Create); err != nil{
-		returnError(ctx, w, r, err)
+	if err := c.Bind(&{{.StructName | toLower}}); err != nil {
+		code = util.ErrParam
+		util.OutJsonErrMsg(c, code, err.Error())
 		return
 	}
 
     var err error
-	{{.StructName | toLower}}, _, err = {{.daoPackageName}}.Add{{.StructName}}(ctx, {{.StructName | toLower}})
+	{{.StructName | toLower}}, _, err = {{.daoPackageName}}.Add{{.StructName}}(c, {{.StructName | toLower}})
 	if err != nil {
-		returnError(ctx, w, r, err)
+		code = util.ErrMySQL
+		util.OutJsonErrMsg(c, code, err.Error())
 		return
 	}
 
-	writeJSON(ctx, w, {{.StructName | toLower}})
+	util.OutJson(c, code, nil)
 }
 {{end}}

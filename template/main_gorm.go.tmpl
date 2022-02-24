@@ -16,10 +16,10 @@ import (
 	swaggerFiles "github.com/swaggo/files"     // swagger embed files
 	ginSwagger "github.com/swaggo/gin-swagger" // gin-swagger middleware
 
-	"example.com/rest/example/api"
-	"example.com/rest/example/dao"
-	_ "example.com/rest/example/docs"
-	"example.com/rest/example/model"
+	_ "{{.module}}/docs"
+	"{{.apiFQPN}}"
+	"{{.daoFQPN}}"
+	"{{.modelFQPN}}"
 )
 
 var (

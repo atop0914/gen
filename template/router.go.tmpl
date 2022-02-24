@@ -3,13 +3,10 @@ package {{.apiPackageName}}
 import (
 	"context"
 	"encoding/json"
-	"fmt"
 	"io/ioutil"
 	"net/http"
 	"strconv"
 	"unsafe"
-
-	_ "github.com/satori/go.uuid"
 
 	"{{.daoFQPN}}"
 	"{{.modelFQPN}}"
@@ -32,13 +29,24 @@ type CrudAPI struct {
 	TableInfo       *{{.modelPackageName}}.TableInfo {{ .Config.JSONTag "table_info" }}
 }
 
+type CommonResponse struct {
+	Code int         `json:"code"`
+	Data interface{} `json:"data"`
+	Err  bool        `json:"err"`
+	Msg  string      `json:"msg"`
+}
 
-// PagedResults results for pages GetAll results.
-type PagedResults struct {
-	Page         int         `json:"page"`
-	PageSize     int         `json:"page_size"`
-	Data         interface{} `json:"data"`
-	TotalRecords int64       `json:"total_records"`
+// PagedRequest request for pages GetAll results.
+type PagedRequest struct {
+	Page     int    `json:"page"`
+	PageSize int    `json:"page_size"`
+	Order    string `json:"order"`
+}
+
+// PagedResult results for pages GetAll results.
+type PagedResult struct {
+	Data         interface{} `json:"list"`
+	TotalRecords int64       `json:"total"`
 }
 
 // HTTPError example
@@ -53,8 +61,7 @@ func ConfigRouter() http.Handler {
 	router := httprouter.New()
 	{{range $tableName, $codeInfo := .tableInfos}}config{{$codeInfo.StructName}}Router(router)
     {{end}}
-	router.GET("/ddl/:argID", GetDdl)
-	router.GET("/ddl", GetDdlEndpoints)
+
 	return router
 }
 
@@ -63,8 +70,7 @@ func ConfigRouter() http.Handler {
 func ConfigGinRouter(router gin.IRoutes) {
 	{{range $tableName, $codeInfo := .tableInfos}}configGin{{$codeInfo.StructName}}Router(router)
 	{{end}}
-	router.GET("/ddl/:argID", ConverHttprouterToGin(GetDdl))
-	router.GET("/ddl", ConverHttprouterToGin(GetDdlEndpoints))
+
 	return
 }
 
@@ -115,13 +121,13 @@ var ContextInitializer ContextInitializerFunc
 
 
 
-func readInt(r *http.Request, param string, v int) (int, error) {
+func readInt(r *http.Request, param string, v int64) (int64, error) {
 	p := r.FormValue(param)
 	if p == "" {
 		return v, nil
 	}
 
-	return strconv.Atoi(p)
+	return strconv.ParseInt(p, 10, 64)
 }
 
 func writeJSON(ctx context.Context, w http.ResponseWriter, v interface{}) {
@@ -147,188 +153,91 @@ func readJSON(r *http.Request, v interface{}) error {
 	return json.Unmarshal(buf, v)
 }
 
-
-func returnError(ctx context.Context, w http.ResponseWriter, r *http.Request, err error) {
-	status :=0
-	switch err {
-	case {{.daoPackageName}}.ErrNotFound:
-		status = http.StatusBadRequest
-	case {{.daoPackageName}}.ErrUnableToMarshalJSON:
-		status = http.StatusBadRequest
-	case {{.daoPackageName}}.ErrUpdateFailed:
-		status = http.StatusBadRequest
-	case {{.daoPackageName}}.ErrInsertFailed:
-		status = http.StatusBadRequest
-	case {{.daoPackageName}}.ErrDeleteFailed:
-		status = http.StatusBadRequest
-	case {{.daoPackageName}}.ErrBadParams:
-		status = http.StatusBadRequest
-	default:
-		status = http.StatusBadRequest
-	}
-	er := HTTPError{
-		Code:    status,
-		Message: err.Error(),
-	}
-
-	SendJSON(w, r, er.Code, er)
-}
-
-
-// NewError example
-func NewError(ctx *gin.Context, status int, err error) {
-	er := HTTPError{
-		Code:    status,
-		Message: err.Error(),
-	}
-	ctx.JSON(status, er)
-}
-
-
-
-
-func parseUint8(ps httprouter.Params, key string) (uint8, error) {
-	idStr := ps.ByName(key)
+func parseUint8(c *gin.Context, key string) (uint8, error) {
+	idStr := c.Param(key)
 	id, err := strconv.ParseInt(idStr, 10, 8)
 	if err != nil {
-		return uint8(id), err
+		return 0, err
 	}
 	return uint8(id), err
 }
-func parseUint16(ps httprouter.Params, key string) (uint16, error) {
-	idStr := ps.ByName(key)
+
+func parseUint16(c *gin.Context, key string) (uint16, error) {
+	idStr := c.Param(key)
 	id, err := strconv.ParseInt(idStr, 10, 16)
 	if err != nil {
-		return uint16(id), err
+		return 0, err
 	}
 	return uint16(id), err
 }
-func parseUint32(ps httprouter.Params, key string) (uint32, error) {
-	idStr := ps.ByName(key)
+func parseUint32(c *gin.Context, key string) (uint32, error) {
+	idStr := c.Param(key)
 	id, err := strconv.ParseInt(idStr, 10, 32)
 	if err != nil {
-		return uint32(id), err
+		return 0, err
 	}
 	return uint32(id), err
 }
-func parseUint64(ps httprouter.Params, key string) (uint64, error) {
-	idStr := ps.ByName(key)
+func parseUint64(c *gin.Context, key string) (uint64, error) {
+	idStr := c.Param(key)
 	id, err := strconv.ParseInt(idStr, 10, 64)
 	if err != nil {
-		return uint64(id), err
+		return 0, err
 	}
 	return uint64(id), err
 }
-func parseInt(ps httprouter.Params, key string) (int, error) {
-	idStr := ps.ByName(key)
+func parseInt(c *gin.Context, key string) (int, error) {
+	idStr := c.Param(key)
 	id, err := strconv.ParseInt(idStr, 10, 64)
 	if err != nil {
 		return -1, err
 	}
 	return int(id), err
 }
-func parseInt8(ps httprouter.Params, key string) (int8, error) {
-	idStr := ps.ByName(key)
+func parseInt8(c *gin.Context, key string) (int8, error) {
+	idStr := c.Param(key)
 	id, err := strconv.ParseInt(idStr, 10, 8)
 	if err != nil {
 		return -1, err
 	}
 	return int8(id), err
 }
-func parseInt16(ps httprouter.Params, key string) (int16, error) {
-	idStr := ps.ByName(key)
+func parseInt16(c *gin.Context, key string) (int16, error) {
+	idStr := c.Param(key)
 	id, err := strconv.ParseInt(idStr, 10, 16)
 	if err != nil {
 		return -1, err
 	}
 	return int16(id), err
 }
-func parseInt32(ps httprouter.Params, key string) (int32, error) {
-	idStr := ps.ByName(key)
+func parseInt32(c *gin.Context, key string) (int32, error) {
+	idStr := c.Param(key)
 	id, err := strconv.ParseInt(idStr, 10, 32)
 	if err != nil {
 		return -1, err
 	}
 	return int32(id), err
 }
-func parseInt64(ps httprouter.Params, key string) (int64, error) {
-	idStr := ps.ByName(key)
-	id, err := strconv.ParseInt(idStr, 10, 54)
+func parseInt64(c *gin.Context, key string) (int64, error) {
+	idStr := c.Param(key)
+	id, err := strconv.ParseInt(idStr, 10, 64)
 	if err != nil {
 		return -1, err
 	}
 	return id, err
 }
-func parseString(ps httprouter.Params, key string) (string, error) {
-	idStr := ps.ByName(key)
+func parseString(c *gin.Context, key string) (string, error) {
+	idStr := c.Param(key)
 	return idStr, nil
 }
-func parseUUID(ps httprouter.Params, key string) (string, error) {
-	idStr := ps.ByName(key)
-	return idStr, nil
-}
-
-func parseBytes(ps httprouter.Params, key string) (string, error) {
-	idStr := ps.ByName(key)
+func parseUUID(c *gin.Context, key string) (string, error) {
+	idStr := c.Param(key)
 	return idStr, nil
 }
 
-
-
-
-
-// GetDdl is a function to get table info for a table in the {{.DatabaseName}} database
-// @Summary Get table info for a table in the {{.DatabaseName}} database by objectId
-// @Tags TableInfo
-// @ID objectId
-// @Description GetDdl is a function to get table info for a table in the {{.DatabaseName}} database
-// @Accept  json
-// @Produce  json
-// @Param  objectId path int true "id"
-// @Success 200 {object} {{.apiPackageName}}.CrudAPI
-// @Failure 400 {object} {{.apiPackageName}}.HTTPError
-// @Failure 404 {object} {{.apiPackageName}}.HTTPError "ErrNotFound, db record for id not found - returns NotFound HTTP 404 not found error"
-// @Router /ddl/{objectId} [get]
-// http "{{$.serverScheme}}://{{$.serverHost}}{{if ne $.serverPort 80}}:{{$.serverPort}}{{end}}/ddl/xyz" X-Api-User:user123
-func GetDdl(w http.ResponseWriter, r *http.Request, ps httprouter.Params) {
-	ctx := initializeContext(r)
-
-	argID := ps.ByName("objectId")
-
-	if err := ValidateRequest(ctx, r, "ddl", {{.modelPackageName}}.FetchDDL); err != nil {
-		returnError(ctx, w, r, err)
-		return
-	}
-
-	record, ok := crudEndpoints[argID]
-	if !ok {
-		returnError(ctx, w, r, fmt.Errorf("unable to find table: %s", argID) )
-		return
-	}
-
-	writeJSON(ctx, w, record)
-}
-
-
-
-// GetDdlEndpoints is a function to get a list of ddl endpoints available for tables in the {{.DatabaseName}} database
-// @Summary Gets a list of ddl endpoints available for tables in the {{.DatabaseName}} database
-// @Tags TableInfo
-// @Description GetDdlEndpoints is a function to get a list of ddl endpoints available for tables in the {{.DatabaseName}} database
-// @Accept  json
-// @Produce  json
-// @Success 200 {object} {{.apiPackageName}}.CrudAPI
-// @Router /ddl [get]
-// http "{{$.serverScheme}}://{{$.serverHost}}{{if ne $.serverPort 80}}:{{$.serverPort}}{{end}}/ddl" X-Api-User:user123
-func GetDdlEndpoints(w http.ResponseWriter, r *http.Request, ps httprouter.Params) {
-	ctx := initializeContext(r)
-
-	if err := ValidateRequest(ctx, r, "ddl", {{.modelPackageName}}.FetchDDL); err != nil {
-		returnError(ctx, w, r, err)
-		return
-	}
-
-	writeJSON(ctx, w, crudEndpoints)
+func parseBytes(c *gin.Context, key string) (string, error) {
+	idStr := c.Param(key)
+	return idStr, nil
 }
 
 func init() {
@@ -351,5 +260,4 @@ func init() {
 
 	{{end}}
 }
-
 
