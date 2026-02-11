@@ -97,6 +97,17 @@ var (
 	au            aurora.Aurora
 )
 
+const defaultDirPerm = 0o777
+
+type generationTemplates struct {
+	controller *dbmeta.GenTemplate
+	dao        *dbmeta.GenTemplate
+	daoInit    *dbmeta.GenTemplate
+	goModule   *dbmeta.GenTemplate
+	model      *dbmeta.GenTemplate
+	modelBase  *dbmeta.GenTemplate
+}
+
 func init() {
 	// Setup goopts
 	goopt.Description = func() string {
@@ -178,7 +189,7 @@ func main() {
 		fmt.Printf("model: %s\n", result)
 
 		fmt.Printf("fileNamingTemplate: %s\n", *fileNamingTemplate)
-		result = dbmeta.Replace(*modelNamingTemplate, *nameTest)
+		result = dbmeta.Replace(*fileNamingTemplate, *nameTest)
 		fmt.Printf("file: %s\n", result)
 
 		fmt.Printf("fieldNamingTemplate: %s\n", *fieldNamingTemplate)
@@ -490,85 +501,33 @@ func execTemplate(conf *dbmeta.Config, genTemplate *dbmeta.GenTemplate, data map
 }
 
 func generate(conf *dbmeta.Config) error {
-	var err error
-
 	*jsonNameFormat = strings.ToLower(*jsonNameFormat)
 	*xmlNameFormat = strings.ToLower(*xmlNameFormat)
 	modelDir := filepath.Join(*outDir, *modelPackageName)
 	apiDir := filepath.Join(*outDir, *apiPackageName)
 	daoDir := filepath.Join(*outDir, *daoPackageName)
 
-	err = os.MkdirAll(*outDir, 0777)
-	if err != nil && !*overwrite {
-		fmt.Print(au.Red(fmt.Sprintf("unable to create outDir: %s error: %v\n", *outDir, err)))
+	if err := createDir(*outDir, "outDir"); err != nil {
 		return err
 	}
 
-	err = os.MkdirAll(modelDir, 0777)
-	if err != nil && !*overwrite {
-		fmt.Print(au.Red(fmt.Sprintf("unable to create modelDir: %s error: %v\n", modelDir, err)))
+	if err := createDir(modelDir, "modelDir"); err != nil {
 		return err
 	}
 
 	if *daoGenerate {
-		err = os.MkdirAll(daoDir, 0777)
-		if err != nil && !*overwrite {
-			fmt.Print(au.Red(fmt.Sprintf("unable to create daoDir: %s error: %v\n", daoDir, err)))
+		if err := createDir(daoDir, "daoDir"); err != nil {
 			return err
 		}
 	}
 
 	if *restAPIGenerate {
-		err = os.MkdirAll(apiDir, 0777)
-		if err != nil && !*overwrite {
-			fmt.Print(au.Red(fmt.Sprintf("unable to create apiDir: %s error: %v\n", apiDir, err)))
+		if err := createDir(apiDir, "apiDir"); err != nil {
 			return err
 		}
 	}
-	var ModelTmpl *dbmeta.GenTemplate
-	var ModelBaseTmpl *dbmeta.GenTemplate
-	var ControllerTmpl *dbmeta.GenTemplate
-	var DaoTmpl *dbmeta.GenTemplate
-
-	var DaoInitTmpl *dbmeta.GenTemplate
-	var GoModuleTmpl *dbmeta.GenTemplate
-
-	if ControllerTmpl, err = LoadTemplate("api.go.tmpl"); err != nil {
-		fmt.Print(au.Red(fmt.Sprintf("Error loading template %v\n", err)))
-		return err
-	}
-
-	if *addGormAnnotation {
-		if DaoTmpl, err = LoadTemplate("dao_gorm.go.tmpl"); err != nil {
-			fmt.Print(au.Red(fmt.Sprintf("Error loading template %v\n", err)))
-			return err
-		}
-		if DaoInitTmpl, err = LoadTemplate("dao_gorm_init.go.tmpl"); err != nil {
-			fmt.Print(au.Red(fmt.Sprintf("Error loading template %v\n", err)))
-			return err
-		}
-	} else {
-		if DaoTmpl, err = LoadTemplate("dao_sqlx.go.tmpl"); err != nil {
-			fmt.Print(au.Red(fmt.Sprintf("Error loading template %v\n", err)))
-			return err
-		}
-		if DaoInitTmpl, err = LoadTemplate("dao_sqlx_init.go.tmpl"); err != nil {
-			fmt.Print(au.Red(fmt.Sprintf("Error loading template %v\n", err)))
-			return err
-		}
-	}
-
-	if GoModuleTmpl, err = LoadTemplate("gomod.tmpl"); err != nil {
-		fmt.Print(au.Red(fmt.Sprintf("Error loading template %v\n", err)))
-		return err
-	}
-
-	if ModelTmpl, err = LoadTemplate("model.go.tmpl"); err != nil {
-		fmt.Print(au.Red(fmt.Sprintf("Error loading template %v\n", err)))
-		return err
-	}
-	if ModelBaseTmpl, err = LoadTemplate("model_base.go.tmpl"); err != nil {
-		fmt.Print(au.Red(fmt.Sprintf("Error loading template %v\n", err)))
+	templates, err := loadGenerationTemplates()
+	if err != nil {
 		return err
 	}
 
@@ -589,18 +548,14 @@ func generate(conf *dbmeta.Config) error {
 		modelInfo := conf.CreateContextForTableFile(tableInfo)
 
 		modelFile := filepath.Join(modelDir, CreateGoSrcFileName(tableName))
-		err = conf.WriteTemplate(ModelTmpl, modelInfo, modelFile)
-		if err != nil {
-			fmt.Print(au.Red(fmt.Sprintf("Error writing file: %v\n", err)))
-			os.Exit(1)
+		if err := writeTemplate(conf, templates.model, modelInfo, modelFile); err != nil {
+			return err
 		}
 
 		if *restAPIGenerate {
 			restFile := filepath.Join(apiDir, CreateGoSrcFileName(tableName))
-			err = conf.WriteTemplate(ControllerTmpl, modelInfo, restFile)
-			if err != nil {
-				fmt.Print(au.Red(fmt.Sprintf("Error writing file: %v\n", err)))
-				os.Exit(1)
+			if err := writeTemplate(conf, templates.controller, modelInfo, restFile); err != nil {
+				return err
 			}
 
 		}
@@ -608,10 +563,8 @@ func generate(conf *dbmeta.Config) error {
 		if *daoGenerate {
 			// write dao
 			outputFile := filepath.Join(daoDir, CreateGoSrcFileName(tableName))
-			err = conf.WriteTemplate(DaoTmpl, modelInfo, outputFile)
-			if err != nil {
-				fmt.Print(au.Red(fmt.Sprintf("Error writing file: %v\n", err)))
-				os.Exit(1)
+			if err := writeTemplate(conf, templates.dao, modelInfo, outputFile); err != nil {
+				return err
 			}
 		}
 	}
@@ -625,24 +578,18 @@ func generate(conf *dbmeta.Config) error {
 	}
 
 	if *daoGenerate {
-		err = conf.WriteTemplate(DaoInitTmpl, data, filepath.Join(daoDir, "dao_base.go"))
-		if err != nil {
-			fmt.Print(au.Red(fmt.Sprintf("Error writing file: %v\n", err)))
-			os.Exit(1)
+		if err := writeTemplate(conf, templates.daoInit, data, filepath.Join(daoDir, "dao_base.go")); err != nil {
+			return err
 		}
 	}
 
-	err = conf.WriteTemplate(ModelBaseTmpl, data, filepath.Join(modelDir, "model_base.go"))
-	if err != nil {
-		fmt.Print(au.Red(fmt.Sprintf("Error writing file: %v\n", err)))
-		os.Exit(1)
+	if err := writeTemplate(conf, templates.modelBase, data, filepath.Join(modelDir, "model_base.go")); err != nil {
+		return err
 	}
 
 	if *modGenerate {
-		err = conf.WriteTemplate(GoModuleTmpl, data, filepath.Join(*outDir, "go.mod"))
-		if err != nil {
-			fmt.Print(au.Red(fmt.Sprintf("Error writing file: %v\n", err)))
-			os.Exit(1)
+		if err := writeTemplate(conf, templates.goModule, data, filepath.Join(*outDir, "go.mod")); err != nil {
+			return err
 		}
 	}
 
@@ -684,6 +631,75 @@ func generate(conf *dbmeta.Config) error {
 
 	if *runGoFmt {
 		GoFmt(conf.OutDir)
+	}
+
+	return nil
+}
+
+func createDir(path, label string) error {
+	err := os.MkdirAll(path, defaultDirPerm)
+	if err != nil && !*overwrite {
+		fmt.Print(au.Red(fmt.Sprintf("unable to create %s: %s error: %v\n", label, path, err)))
+		return err
+	}
+
+	return nil
+}
+
+func loadTemplateOrError(name string) (*dbmeta.GenTemplate, error) {
+	tmpl, err := LoadTemplate(name)
+	if err != nil {
+		fmt.Print(au.Red(fmt.Sprintf("Error loading template %s: %v\n", name, err)))
+		return nil, err
+	}
+
+	return tmpl, nil
+}
+
+func loadGenerationTemplates() (*generationTemplates, error) {
+	templates := &generationTemplates{}
+
+	var err error
+	if templates.controller, err = loadTemplateOrError("api.go.tmpl"); err != nil {
+		return nil, err
+	}
+
+	if *addGormAnnotation {
+		if templates.dao, err = loadTemplateOrError("dao_gorm.go.tmpl"); err != nil {
+			return nil, err
+		}
+		if templates.daoInit, err = loadTemplateOrError("dao_gorm_init.go.tmpl"); err != nil {
+			return nil, err
+		}
+	} else {
+		if templates.dao, err = loadTemplateOrError("dao_sqlx.go.tmpl"); err != nil {
+			return nil, err
+		}
+		if templates.daoInit, err = loadTemplateOrError("dao_sqlx_init.go.tmpl"); err != nil {
+			return nil, err
+		}
+	}
+
+	if templates.goModule, err = loadTemplateOrError("gomod.tmpl"); err != nil {
+		return nil, err
+	}
+
+	if templates.model, err = loadTemplateOrError("model.go.tmpl"); err != nil {
+		return nil, err
+	}
+
+	if templates.modelBase, err = loadTemplateOrError("model_base.go.tmpl"); err != nil {
+		return nil, err
+	}
+
+	return templates, nil
+}
+
+func writeTemplate(conf *dbmeta.Config, tmpl *dbmeta.GenTemplate, data map[string]interface{}, outputFile string) error {
+	err := conf.WriteTemplate(tmpl, data, outputFile)
+	if err != nil {
+		fmt.Print(au.Red(fmt.Sprintf("Error writing file %s: %v\n", outputFile, err)))
+		return err
 	}
 
 	return nil
